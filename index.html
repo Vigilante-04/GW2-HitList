@@ -24,7 +24,7 @@
       margin: 20px auto;
       border-collapse: collapse;
       width: 95%;
-      max-width: 900px;
+      max-width: 1000px;
       background: #1b1b1b;
       border-radius: 8px;
       overflow: hidden;
@@ -50,11 +50,13 @@
   <div id="table-container">Loading data...</div>
 
   <script>
-    // 🔑 HARD-CODED GW2 API KEY — replace with yours
-    const GW2_API_KEY = "067A7D89-E60D-C445-966B-76EE72F2922E4002A77F-5917-4B6E-A3E2-BF7F2A067682";
+    // 🔑 HARD-CODED GW2 API KEY
+    const GW2_API_KEY = "F1C9FA66-0F9C-354B-93E7-419A4ADD6182B25D910B-F9AE-40EC-8460-D42AF1C27BB5";
 
-    // Your published Google Sheet WebApp URL
+    // Google Sheet WebApp URL
     const SHEET_URL = "https://script.google.com/macros/s/AKfycbyZ1eKMg4m5xmWmmM1W87OzvvXOqKVXhc7CFCEdJ-O3yFyQTki2euB43cQvPj_SeEH3/exec";
+
+    let worldsCache = {};
 
     async function fetchSheetData() {
       try {
@@ -72,10 +74,24 @@
           headers: { "Authorization": `Bearer ${GW2_API_KEY}` }
         });
         const data = await res.json();
-        return Array.isArray(data) ? data : []; // ✅ Always return array
+        return Array.isArray(data) ? data : [];
       } catch (err) {
         console.error("Error fetching friends:", err);
         return [];
+      }
+    }
+
+    async function fetchWorldNames(worldIds) {
+      if (!worldIds.length) return {};
+      try {
+        const res = await fetch(`https://api.guildwars2.com/v2/worlds?ids=${worldIds.join(",")}`);
+        const data = await res.json();
+        const map = {};
+        data.forEach(w => map[w.id] = w.name);
+        return map;
+      } catch (err) {
+        console.error("Error fetching world names:", err);
+        return {};
       }
     }
 
@@ -85,6 +101,11 @@
           fetchSheetData(),
           fetchFriendsData()
         ]);
+
+        // Get unique world IDs for online friends
+        const worldIds = [...new Set(friends.filter(f => f.world).map(f => f.world))];
+        worldsCache = await fetchWorldNames(worldIds);
+
         renderTable(hitList, friends);
       } catch (err) {
         console.error("Error refreshing data:", err);
@@ -98,12 +119,14 @@
         return;
       }
 
-      let html = "<table><tr><th>Player</th><th>Priority</th><th>Notes</th><th>Status</th></tr>";
+      let html = "<table><tr><th>Player</th><th>Priority</th><th>Notes</th><th>Status</th><th>Location</th><th>World</th></tr>";
       hitList.forEach(entry => {
         const friend = friends.find(f => f.name === entry["Player account"]);
         const status = friend
-          ? `<span class="status-online">Online (${friend.location})</span>`
+          ? `<span class="status-online">Online</span>`
           : `<span class="status-offline">Offline</span>`;
+        const location = friend?.location || "-";
+        const worldName = friend?.world ? (worldsCache[friend.world] || friend.world) : "-";
 
         html += `
           <tr>
@@ -111,6 +134,8 @@
             <td>${entry["Priority (1-10)"] || "-"}</td>
             <td>${entry["Notes"] || ""}</td>
             <td>${status}</td>
+            <td>${location}</td>
+            <td>${worldName}</td>
           </tr>
         `;
       });
@@ -119,7 +144,6 @@
       document.getElementById("table-container").innerHTML = html;
     }
 
-    // 🔄 Refresh automatically every 60 seconds
     refreshData();
     setInterval(refreshData, 60000);
   </script>
