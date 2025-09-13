@@ -2,132 +2,125 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <title>GW2 Spotter - Hit List</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GW2 Spotter — Hit List</title>
   <style>
     body {
       font-family: Arial, sans-serif;
       background: #111;
-      color: #eee;
+      color: #f5f5f5;
+      text-align: center;
       margin: 0;
       padding: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-start;
-      min-height: 100vh;
     }
-    header {
-      width: 100%;
-      padding: 1rem;
+    h1 {
       background: #222;
-      text-align: center;
-      font-size: 1.5rem;
-      font-weight: bold;
-      border-bottom: 1px solid #333;
-    }
-    #controls {
-      margin: 1rem;
-    }
-    button {
-      margin: 0.25rem;
-      padding: 0.5rem 1rem;
-      background: #333;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    button:hover {
-      background: #555;
+      margin: 0;
+      padding: 15px;
+      font-size: 1.8rem;
+      letter-spacing: 1px;
     }
     table {
+      margin: 20px auto;
       border-collapse: collapse;
-      width: 90%;
-      margin: 1rem auto;
-      background: #1a1a1a;
+      width: 95%;
+      max-width: 900px;
+      background: #1b1b1b;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 0 10px rgba(0,0,0,0.6);
     }
     th, td {
-      border: 1px solid #444;
-      padding: 0.5rem;
+      padding: 10px;
+      border: 1px solid #333;
       text-align: left;
     }
     th {
       background: #333;
     }
+    tr:nth-child(even) {
+      background: #1f1f1f;
+    }
+    .status-online { color: #4CAF50; font-weight: bold; }
+    .status-offline { color: #888; }
   </style>
 </head>
 <body>
-  <header>GW2 Spotter — Hit List</header>
-
-  <div id="controls">
-    <button onclick="setApiKey()">Set API Key</button>
-    <button onclick="refreshData()">Refresh now</button>
-  </div>
-
-  <table id="hitlist">
-    <thead>
-      <tr>
-        <th>Player Account</th>
-        <th>Character</th>
-        <th>Priority</th>
-        <th>Notes</th>
-        <th>Status</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+  <h1>GW2 Spotter - Hit List</h1>
+  <div id="table-container">Loading data...</div>
 
   <script>
+    // 🔑 HARD-CODED GW2 API KEY — replace with yours
+    const GW2_API_KEY = "067A7D89-E60D-C445-966B-76EE72F2922E4002A77F-5917-4B6E-A3E2-BF7F2A067682";
+
+    // Your published Google Sheet WebApp URL
     const SHEET_URL = "https://script.google.com/macros/s/AKfycbyZ1eKMg4m5xmWmmM1W87OzvvXOqKVXhc7CFCEdJ-O3yFyQTki2euB43cQvPj_SeEH3/exec";
 
-    function setApiKey() {
-      const key = prompt("Paste your GW2 API key:");
-      if (key) localStorage.setItem("gw2_api_key", key);
+    async function fetchSheetData() {
+      try {
+        const res = await fetch(SHEET_URL);
+        return await res.json();
+      } catch (err) {
+        console.error("Error fetching sheet:", err);
+        return [];
+      }
+    }
+
+    async function fetchFriendsData() {
+      try {
+        const res = await fetch("https://api.guildwars2.com/v2/account/friends", {
+          headers: { "Authorization": `Bearer ${GW2_API_KEY}` }
+        });
+        const data = await res.json();
+        return Array.isArray(data) ? data : []; // ✅ Always return array
+      } catch (err) {
+        console.error("Error fetching friends:", err);
+        return [];
+      }
     }
 
     async function refreshData() {
-      const apiKey = localStorage.getItem("gw2_api_key");
-      if (!apiKey) {
-        alert("No API key set. Click 'Set API Key' first.");
+      try {
+        const [hitList, friends] = await Promise.all([
+          fetchSheetData(),
+          fetchFriendsData()
+        ]);
+        renderTable(hitList, friends);
+      } catch (err) {
+        console.error("Error refreshing data:", err);
+        document.getElementById("table-container").innerHTML = "<p>Error loading data.</p>";
+      }
+    }
+
+    function renderTable(hitList, friends) {
+      if (!hitList || hitList.length === 0) {
+        document.getElementById("table-container").innerHTML = "<p>No hit list data found.</p>";
         return;
       }
 
-      try {
-        // Fetch Google Sheet Hitlist
-        const sheetResp = await fetch(SHEET_URL);
-        const hitlist = await sheetResp.json();
+      let html = "<table><tr><th>Player</th><th>Priority</th><th>Notes</th><th>Status</th></tr>";
+      hitList.forEach(entry => {
+        const friend = friends.find(f => f.name === entry["Player account"]);
+        const status = friend
+          ? `<span class="status-online">Online (${friend.location})</span>`
+          : `<span class="status-offline">Offline</span>`;
 
-        // Fetch GW2 friends list
-        const gw2Resp = await fetch(`https://api.guildwars2.com/v2/account/friends?access_token=${apiKey}`);
-        const friends = await gw2Resp.json();
-
-        renderTable(hitlist, friends);
-      } catch (err) {
-        console.error("Error refreshing data:", err);
-        alert("Failed to load data. Check console for details.");
-      }
-    }
-
-    function renderTable(hitlist, friends) {
-      const tbody = document.querySelector("#hitlist tbody");
-      tbody.innerHTML = "";
-
-      hitlist.sort((a, b) => b.Priority - a.Priority).forEach(entry => {
-        const friend = friends.find(f => f.name === entry.Player);
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td>${entry.Player}</td>
-          <td>${friend ? friend.character : "Unknown"}</td>
-          <td>${entry.Priority}</td>
-          <td>${entry.Notes}</td>
-          <td>${friend ? `${friend.status} — ${friend.map_id || "Unknown map"}` : "Offline"}</td>
+        html += `
+          <tr>
+            <td>${entry["Player account"]}</td>
+            <td>${entry["Priority (1-10)"] || "-"}</td>
+            <td>${entry["Notes"] || ""}</td>
+            <td>${status}</td>
+          </tr>
         `;
-        tbody.appendChild(tr);
       });
+      html += "</table>";
+
+      document.getElementById("table-container").innerHTML = html;
     }
 
-    // Auto-refresh every 60s
+    // 🔄 Refresh automatically every 60 seconds
+    refreshData();
     setInterval(refreshData, 60000);
   </script>
 </body>
