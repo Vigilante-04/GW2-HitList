@@ -1,332 +1,134 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<title>GW2 Spotter — Hit List</title>
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<style>
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;max-width:1100px;margin:16px auto;color:#eaeaea;background:#0f1720}
-  header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
-  h1{margin:0;font-size:18px}
-  .controls{margin-left:auto;display:flex;gap:8px;align-items:center}
-  input[type=text]{padding:6px;border-radius:6px;border:1px solid #333;background:#0b1220;color:#fff}
-  button{background:#1f6feb;border:0;padding:8px 10px;border-radius:6px;color:#fff;cursor:pointer}
-  button.secondary{background:#2b2b2b}
-  table{width:100%;border-collapse:collapse;margin-top:12px}
-  th,td{padding:8px;border-bottom:1px solid rgba(255,255,255,0.04);text-align:left;font-size:14px}
-  th{background:rgba(255,255,255,0.02);position:sticky;top:0}
-  .online{color:#7bed9f}
-  .offline{color:#9aa3b2}
-  .priority{font-weight:700}
-  .small{font-size:12px;color:#9aa3b2}
-  .status-chip{padding:3px 6px;border-radius:999px;font-weight:600}
-  .red{background:#7c2a2a;color:#ffecec}
-  .blue{background:#234f78;color:#e6f0ff}
-  .green{background:#2f6f39;color:#e6ffea}
-  .note{color:#cfcfcf}
-  footer{margin-top:16px;color:#8b98ad;font-size:13px}
-  .error{color:#ff7676}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GW2 Spotter — Hit List</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #eee;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100vh;
+    }
+    header {
+      width: 100%;
+      padding: 1rem;
+      background: #222;
+      text-align: center;
+      font-size: 1.5rem;
+      font-weight: bold;
+      border-bottom: 1px solid #333;
+    }
+    #controls {
+      margin: 1rem;
+    }
+    button {
+      margin: 0.25rem;
+      padding: 0.5rem 1rem;
+      background: #333;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #555;
+    }
+    table {
+      border-collapse: collapse;
+      width: 90%;
+      margin: 1rem auto;
+      background: #1a1a1a;
+    }
+    th, td {
+      border: 1px solid #444;
+      padding: 0.5rem;
+      text-align: left;
+    }
+    th {
+      background: #333;
+    }
+  </style>
 </head>
 <body>
-  <header>
-    <h1>GW2 Spotter — Hit List</h1>
-    <div class="controls">
-      <label class="small">Sheet JSON URL</label>
-      <input id="sheetUrl" type="text" placeholder="Paste your Apps Script JSON URL" style="width:420px"/>
-      <button id="saveSheet" class="secondary">Save</button>
-      <button id="setKey">Set API Key</button>
-      <button id="refreshNow">Refresh now</button>
-    </div>
-  </header>
+  <header>GW2 Spotter — Hit List</header>
 
-  <div id="info" class="small">Status: <span id="status">Idle</span></div>
+  <div id="controls">
+    <button onclick="setApiKey()">Set API Key</button>
+    <button onclick="refreshData()">Refresh now</button>
+  </div>
 
-  <table id="table">
+  <table id="hitlist">
     <thead>
       <tr>
-        <th style="width:8%">Priority</th>
-        <th style="width:24%">Player Account</th>
-        <th style="width:16%">Online</th>
-        <th style="width:18%">Map</th>
-        <th style="width:12%">World / Team</th>
+        <th>Player Account</th>
+        <th>Character</th>
+        <th>Priority</th>
         <th>Notes</th>
+        <th>Status</th>
       </tr>
     </thead>
-    <tbody id="tbody">
-      <tr><td colspan="6" class="small">Load the page, set your API key and sheet URL, then press Refresh.</td></tr>
-    </tbody>
+    <tbody></tbody>
   </table>
 
-  <footer>
-    This runs in your browser only. Paste your GW2 API key when prompted — it is saved locally to your browser's <code>localStorage</code> and not published. Refresh rate: 60s.
-  </footer>
+  <script>
+    const SHEET_URL = "https://script.google.com/macros/s/AKfycbyZ1eKMg4m5xmWmmM1W87OzvvXOqKVXhc7CFCEdJ-O3yFyQTki2euB43cQvPj_SeEH3/exec";
 
-<script>
-/*
-  GW2 Spotter — Single page
-  - Expects your Google Apps Script JSON endpoint that returns an array of objects:
-    [{ "Player account": "Name.1234", "Priority (1-10)": 8, "Notes": "..." }, ...]
-  - You supply a GW2 API key with 'account' permission.
-  - The script fetches /v2/account/friends (authorized) and matches by 'name' field to the sheet list.
-  - Shows online, map name, world, and team color by resolving /v2/wvw/matches.
-*/
+    function setApiKey() {
+      const key = prompt("Paste your GW2 API key:");
+      if (key) localStorage.setItem("gw2_api_key", key);
+    }
 
-const DEFAULT_SHEET = 'https://script.google.com/macros/s/AKfycbyZ1eKMg4m5xmWmmM1W87OzvvXOqKVXhc7CFCEdJ-O3yFyQTki2euB43cQvPj_SeEH3/exec';
-
-let apiKey = localStorage.getItem('gw2_spotter_key') || '';
-let sheetUrl = localStorage.getItem('gw2_spotter_sheet') || DEFAULT_SHEET;
-
-const statusEl = document.getElementById('status');
-const tbody = document.getElementById('tbody');
-const sheetInput = document.getElementById('sheetUrl');
-sheetInput.value = sheetUrl;
-
-document.getElementById('saveSheet').addEventListener('click', () => {
-  sheetUrl = sheetInput.value.trim() || DEFAULT_SHEET;
-  localStorage.setItem('gw2_spotter_sheet', sheetUrl);
-  toast('Saved sheet URL');
-  refreshNow();
-});
-
-document.getElementById('setKey').addEventListener('click', () => {
-  const k = prompt('Paste your GW2 API key (account permission required). This will be stored locally in this browser only.', apiKey || '');
-  if (k !== null) {
-    apiKey = k.trim();
-    localStorage.setItem('gw2_spotter_key', apiKey);
-    toast('API key saved locally.');
-    refreshNow();
-  }
-});
-
-document.getElementById('refreshNow').addEventListener('click', () => refreshNow());
-
-let mapsCache = {};
-let matchesCache = null;
-let lastMatchesAt = 0;
-let lastMapsAt = 0;
-
-const ONE_MIN = 60 * 1000;
-let refreshTimer = null;
-
-function toast(msg) {
-  statusEl.textContent = msg;
-}
-
-// helper fetch JSON
-async function fetchJson(url, opts = {}) {
-  const r = await fetch(url, opts);
-  if (!r.ok) throw new Error(`HTTP ${r.status} - ${r.statusText}`);
-  return r.json();
-}
-
-// get hitlist from sheet (assumes Apps Script JSON format)
-async function loadHitList() {
-  const res = await fetchJson(sheetUrl);
-  // Normalize sheet column names: accept ["Player account", "Priority (1-10)", "Notes"]
-  return res.map(r => ({
-    account: (r['Player account'] || r['Player Account'] || r['account'] || '').trim(),
-    priority: Number(r['Priority (1-10)'] || r['Priority'] || r['priority'] || 0) || 0,
-    notes: (r['Notes'] || r['notes'] || '').trim()
-  })).filter(x => x.account);
-}
-
-// get friends list from GW2 (authorized)
-async function loadFriends() {
-  if (!apiKey) throw new Error('API key not set. Click Set API Key.');
-  const url = `https://api.guildwars2.com/v2/account/friends?access_token=${encodeURIComponent(apiKey)}`;
-  return fetchJson(url);
-}
-
-// resolve map_id -> map name (cache)
-async function resolveMapName(map_id) {
-  if (!map_id && map_id !== 0) return '';
-  if (mapsCache[map_id]) return mapsCache[map_id];
-  // refresh full map list once every hour (or on demand)
-  const now = Date.now();
-  if (!mapsCache._loaded || (now - lastMapsAt > 60*60*1000)) {
-    // fetch all maps metadata and cache id->name
-    try {
-      const mapList = await fetchJson('https://api.guildwars2.com/v2/maps');
-      // mapList is array of IDs; fetch details in bulk (split into chunks)
-      const chunks = [];
-      for (let i=0;i<mapList.length;i+=200) chunks.push(mapList.slice(i,i+200));
-      for (const ch of chunks) {
-        const res = await fetchJson('https://api.guildwars2.com/v2/maps?ids=' + ch.join(','));
-        res.forEach(m => mapsCache[m.id] = m.name || (`Map ${m.id}`));
+    async function refreshData() {
+      const apiKey = localStorage.getItem("gw2_api_key");
+      if (!apiKey) {
+        alert("No API key set. Click 'Set API Key' first.");
+        return;
       }
-      mapsCache._loaded = true;
-      lastMapsAt = now;
-    } catch(e) {
-      console.warn('Could not prefetch maps:', e);
-    }
-  }
-  return mapsCache[map_id] || `Map ${map_id}`;
-}
 
-// load /v2/wvw/matches and build a map of world->team and linked worlds names
-async function loadMatches() {
-  const now = Date.now();
-  if (matchesCache && (now - lastMatchesAt < 5*60*1000)) return matchesCache; // cache 5min
-  const matches = await fetchJson('https://api.guildwars2.com/v2/wvw/matches');
-  // build mapping worldId -> { matchId, teamColor, linkedWorldsArr }
-  const worldMap = {}; // worldId -> { color, matchId, linked }
-  // Each match has worlds.red/blue/green arrays
-  for (const m of matches) {
-    const matchId = m.id;
-    const colors = ['red','blue','green'];
-    for (const color of colors) {
-      const arr = (m.worlds && m.worlds[color]) || [];
-      for (const w of arr) {
-        worldMap[w] = { color: color.toUpperCase(), matchId, linked: arr.slice() };
-      }
-    }
-  }
-  matchesCache = worldMap;
-  lastMatchesAt = now;
-  return matchesCache;
-}
+      try {
+        // Fetch Google Sheet Hitlist
+        const sheetResp = await fetch(SHEET_URL);
+        const hitlist = await sheetResp.json();
 
-// main refresh function
-async function refreshNow() {
-  try {
-    toast('Refreshing…');
-    const hitlist = await loadHitList();
-    const friends = await loadFriends(); // returns array of friend objects
-    // friends entries example: { id, name, online, map_id, world, last_modified }
-    const matches = await loadMatches();
+        // Fetch GW2 friends list
+        const gw2Resp = await fetch(`https://api.guildwars2.com/v2/account/friends?access_token=${apiKey}`);
+        const friends = await gw2Resp.json();
 
-    // create quick lookup by friend display name
-    const friendMap = {};
-    for (const f of friends) {
-      const name = (f.name || '').trim();
-      friendMap[name] = f;
-    }
-
-    // prepare rows - join hit list with friend info
-    const rows = hitlist.map(h => {
-      const friend = friendMap[h.account] || null;
-      return {
-        account: h.account,
-        priority: h.priority || 0,
-        notes: h.notes || '',
-        online: friend ? Boolean(friend.online) : false,
-        map_id: friend ? friend.map_id : null,
-        world: friend ? friend.world : null,
-        last_seen: friend ? friend.last_modified : null
-      };
-    });
-
-    // Resolve map names & team info in parallel but limited
-    const mapPromises = rows.map(r => (r.map_id ? resolveMapName(r.map_id).then(name => r.map_name = name).catch(()=>r.map_name='') : (r.map_name='')));
-    await Promise.all(mapPromises);
-
-    // Attach team/link info
-    for (const r of rows) {
-      if (r.world && matches[r.world]) {
-        r.team = matches[r.world].color;
-        r.linked = matches[r.world].linked || [];
-      } else {
-        r.team = null;
-        r.linked = [];
+        renderTable(hitlist, friends);
+      } catch (err) {
+        console.error("Error refreshing data:", err);
+        alert("Failed to load data. Check console for details.");
       }
     }
 
-    // sort by priority desc
-    rows.sort((a,b) => b.priority - a.priority || a.account.localeCompare(b.account));
+    function renderTable(hitlist, friends) {
+      const tbody = document.querySelector("#hitlist tbody");
+      tbody.innerHTML = "";
 
-    renderTable(rows);
-    toast(`Last refreshed: ${new Date().toLocaleTimeString()}`);
-  } catch (err) {
-    console.error(err);
-    toast('Error: ' + (err.message || err));
-    tbody.innerHTML = `<tr><td colspan="6" class="error">Error: ${err.message || err}. Check API key, sheet URL, or console for details.</td></tr>`;
-  } finally {
-    scheduleNext();
-  }
-}
-
-function renderTable(rows) {
-  if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="6" class="small">No players in the Hit List.</td></tr>`;
-    return;
-  }
-  tbody.innerHTML = '';
-  for (const r of rows) {
-    const tr = document.createElement('tr');
-
-    // Priority
-    const p = document.createElement('td');
-    p.innerHTML = `<span class="priority">${r.priority}</span>`;
-    tr.appendChild(p);
-
-    // Account
-    const acc = document.createElement('td');
-    acc.innerHTML = `<strong>${r.account}</strong><div class="small">${r.last_seen ? 'Last seen: '+new Date(r.last_seen).toLocaleString() : ''}</div>`;
-    tr.appendChild(acc);
-
-    // Online
-    const on = document.createElement('td');
-    if (r.online) {
-      on.innerHTML = `<span class="status-chip online">Online</span>`;
-    } else {
-      on.innerHTML = `<span class="status-chip offline">Offline</span>`;
+      hitlist.sort((a, b) => b.Priority - a.Priority).forEach(entry => {
+        const friend = friends.find(f => f.name === entry.Player);
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${entry.Player}</td>
+          <td>${friend ? friend.character : "Unknown"}</td>
+          <td>${entry.Priority}</td>
+          <td>${entry.Notes}</td>
+          <td>${friend ? `${friend.status} — ${friend.map_id || "Unknown map"}` : "Offline"}</td>
+        `;
+        tbody.appendChild(tr);
+      });
     }
-    tr.appendChild(on);
 
-    // Map
-    const map = document.createElement('td');
-    map.textContent = r.map_name || (r.online ? 'Unknown map' : '');
-    tr.appendChild(map);
-
-    // World / Team
-    const wt = document.createElement('td');
-    if (r.world) {
-      let teamHtml = r.team ? `<span class="${r.team==='RED'?'red':r.team==='BLUE'?'blue':'green'} status-chip">${r.team}</span>` : '';
-      const linked = (r.linked && r.linked.length) ? ` <div class="small">Linked: ${r.linked.join(', ')}</div>` : '';
-      wt.innerHTML = `<div>${r.world} ${teamHtml}</div>${linked}`;
-    } else {
-      wt.textContent = '';
-    }
-    tr.appendChild(wt);
-
-    // Notes
-    const notes = document.createElement('td');
-    notes.innerHTML = `<div class="note">${escapeHtml(r.notes || '')}</div>`;
-    tr.appendChild(notes);
-
-    tbody.appendChild(tr);
-  }
-}
-
-function escapeHtml(s) {
-  if (!s) return '';
-  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-
-function scheduleNext() {
-  if (refreshTimer) clearTimeout(refreshTimer);
-  refreshTimer = setTimeout(() => refreshNow(), ONE_MIN);
-}
-
-// initial start
-(async () => {
-  // populate sheet input if not set
-  sheetInput.value = sheetUrl;
-  try {
-    if (!apiKey) {
-      // quietly inform user to set key
-      statusEl.textContent = 'API key not set';
-    } else {
-      statusEl.textContent = 'Ready';
-      await refreshNow();
-    }
-  } catch(e) {
-    console.warn(e);
-    statusEl.textContent = 'Ready (errors may appear)';
-  }
-})();
-</script>
+    // Auto-refresh every 60s
+    setInterval(refreshData, 60000);
+  </script>
 </body>
 </html>
-
