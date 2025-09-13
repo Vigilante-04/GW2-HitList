@@ -4,90 +4,121 @@
   <meta charset="UTF-8">
   <title>GW2 Spotter - Hit List</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; background: #111; color: #eee; }
-    h1 { text-align: center; }
-    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-    th, td { border: 1px solid #333; padding: 8px; text-align: left; }
-    th { background: #222; }
-    .status-online { color: #00ff00; font-weight: bold; }
-    .status-offline { color: #ff0000; font-weight: bold; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      margin: 0;
+      padding: 0;
+    }
+    h1 {
+      text-align: center;
+      background: #222;
+      color: white;
+      padding: 10px;
+      margin: 0 0 10px;
+    }
+    table {
+      width: 90%;
+      margin: 0 auto;
+      border-collapse: collapse;
+      background: white;
+      box-shadow: 0 0 5px rgba(0,0,0,0.2);
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 6px;
+      text-align: left;
+    }
+    th {
+      background: #eee;
+    }
+    .online {
+      color: green;
+      font-weight: bold;
+    }
+    .offline {
+      color: red;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
   <h1>GW2 Spotter - Hit List</h1>
-  <div id="table-container">Loading...</div>
+  <table id="hitList">
+    <thead>
+      <tr>
+        <th>Player Account</th>
+        <th>Status</th>
+        <th>Location</th>
+        <th>World</th>
+        <th>Priority</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
   <script>
-    const API_KEY = "F1C9FA66-0F9C-354B-93E7-419A4ADD6182B25D910B-F9AE-40EC-8460-D42AF1C27BB5";
-    const SHEET_URL = "https://script.google.com/macros/s/AKfycbyZ1eKMg4m5xmWmmM1W87OzvvXOqKVXhc7CFCEdJ-O3yFyQTki2euB43cQvPj_SeEH3/exec";
+    const SHEET_URL = "YOUR_SCRIPT_URL"; // Replace with your Apps Script web app URL
+    const GW2_API_KEY = "F1C9FA66-0F9C-354B-93E7-419A4ADD6182B25D910B-F9AE-40EC-8460-D42AF1C27BB5";
 
-    async function fetchHitList() {
+    async function fetchSheet() {
       const res = await fetch(SHEET_URL);
-      const json = await res.json();
-      return json;
+      return res.json();
     }
 
-    async function fetchAccountInfo() {
-      const res = await fetch("https://api.guildwars2.com/v2/account?access_token=" + API_KEY);
-      if (!res.ok) return null;
-      return await res.json();
-    }
-
-    async function fetchWorldLinks() {
-      const res = await fetch("https://api.gw2mists.com/links");
-      if (!res.ok) return [];
-      return await res.json();
-    }
-
-    function renderTable(hitList, accountInfo, worldLinks) {
-      if (!hitList || hitList.length === 0) {
-        document.getElementById("table-container").innerHTML = "<p>No hit list data found.</p>";
-        return;
-      }
-
-      const homeWorld = accountInfo?.world || "Unknown World";
-      const linkedWorld = worldLinks.find(w => w.worlds.includes(homeWorld));
-
-      let html = `<p>Your Home World: <b>${homeWorld}</b> ${linkedWorld ? `(Linked with: ${linkedWorld.worlds.join(", ")})` : ""}</p>`;
-      html += "<table><tr><th>Player</th><th>Priority</th><th>Notes</th><th>Status</th><th>Location</th><th>World</th></tr>";
-
-      hitList.forEach(entry => {
-        const playerName = entry["Player account (name.####)"];
-        const priority = entry["Priority (1-10)"];
-        const notes = entry["Notes"];
-
-        html += `
-          <tr>
-            <td>${playerName || "-"}</td>
-            <td>${priority || "-"}</td>
-            <td>${notes || ""}</td>
-            <td><span class="status-offline">Unknown</span></td>
-            <td>-</td>
-            <td>${homeWorld}</td>
-          </tr>`;
+    async function fetchFriends() {
+      const res = await fetch("https://api.guildwars2.com/v2/account/friends", {
+        headers: { Authorization: `Bearer ${GW2_API_KEY}` }
       });
+      return res.json();
+    }
 
-      html += "</table>";
-      document.getElementById("table-container").innerHTML = html;
+    async function fetchMistsLinks() {
+      const res = await fetch(SHEET_URL + "?type=mists");
+      return res.json();
     }
 
     async function refreshData() {
       try {
-        const [hitList, accountInfo, worldLinks] = await Promise.all([
-          fetchHitList(),
-          fetchAccountInfo(),
-          fetchWorldLinks()
+        const [sheetData, friends, mists] = await Promise.all([
+          fetchSheet(),
+          fetchFriends(),
+          fetchMistsLinks()
         ]);
-        renderTable(hitList, accountInfo, worldLinks);
-      } catch (err) {
-        console.error("Error refreshing data:", err);
-        document.getElementById("table-container").innerHTML = "<p>Error loading data.</p>";
+
+        renderTable(sheetData, friends, mists);
+      } catch (e) {
+        console.error("Error refreshing data:", e);
       }
     }
 
-    // Refresh every minute
-    setInterval(refreshData, 60000);
+    function renderTable(sheetData, friends, mists) {
+      const tbody = document.querySelector("#hitList tbody");
+      tbody.innerHTML = "";
+
+      // Sort by priority (descending)
+      sheetData.sort((a, b) => (b["Priority (1-10)"] || 0) - (a["Priority (1-10)"] || 0));
+
+      sheetData.forEach(row => {
+        const friend = friends.find(f => f.name.toLowerCase() === row["Player account (name.####)"].toLowerCase());
+        const status = friend ? (friend.online ? "Online" : "Offline") : "Not in Friends List";
+        
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${row["Player account (name.####)"]}</td>
+          <td class="${friend && friend.online ? 'online' : 'offline'}">${status}</td>
+          <td>${friend && friend.online ? (friend.location || '-') : '-'}</td>
+          <td>-</td>
+          <td>${row["Priority (1-10)"] || ""}</td>
+          <td>${row["Notes"] || ""}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
     refreshData();
+    setInterval(refreshData, 60000); // refresh every 60 sec
   </script>
 </body>
 </html>
