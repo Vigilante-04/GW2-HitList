@@ -1,47 +1,29 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>GW2 Spotter - Hit List</title>
-  <style>
-    body { font-family: Arial, sans-serif; background: #111; color: #eee; padding: 20px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-    th, td { padding: 8px 12px; border-bottom: 1px solid #333; text-align: left; }
-    .online { color: limegreen; font-weight: bold; }
-    .offline { color: red; font-weight: bold; }
-  </style>
-</head>
-<body>
-  <h1>GW2 Spotter - Hit List</h1>
-  <table id="hitlist">
-    <thead>
-      <tr>
-        <th>Player</th>
-        <th>Status</th>
-        <th>Location</th>
-        <th>World</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
-
 <script>
 const API_KEY = "F1C9FA66-0F9C-354B-93E7-419A4ADD6182B25D910B-F9AE-40EC-8460-D42AF1C27BB5";
-const SHEET_URL = "https://script.google.com/macros/s/AKfycbyZ1eKMg4m5xmWmmM1W87OzvvXOqKVXhc7CFCEdJ-O3yFyQTki2euB43cQvPj_SeEH3/exec";
+const PROXY_URL = "https://script.google.com/macros/s/AKfycbyO04Bj3JWy7KAES0GX2FvZVvPg7zsrK2KSprO1cUtmHxdad-NTzSMmRUfrnwRShHVWbA/exec"; // Replace with redeployed web app URL
 
 async function fetchSheetData() {
-  const res = await fetch(SHEET_URL);
+  const res = await fetch(PROXY_URL);
   return await res.json();
 }
 
 async function fetchFriends() {
-  const res = await fetch(`https://script.google.com/macros/s/AKfycbyZ1eKMg4m5xmWmmM1W87OzvvXOqKVXhc7CFCEdJ-O3yFyQTki2euB43cQvPj_SeEH3/exec?friends=1&key=${API_KEY}`);
+  const res = await fetch(`${PROXY_URL}?type=friends&key=${API_KEY}`);
+  return await res.json();
+}
+
+async function fetchMists() {
+  const res = await fetch(`${PROXY_URL}?type=mists`);
   return await res.json();
 }
 
 async function refreshData() {
   try {
-    const [sheetData, friendsData] = await Promise.all([fetchSheetData(), fetchFriends()]);
+    const [sheetData, friendsData, mistsData] = await Promise.all([
+      fetchSheetData(),
+      fetchFriends(),
+      fetchMists()
+    ]);
 
     const tbody = document.querySelector("#hitlist tbody");
     tbody.innerHTML = "";
@@ -49,6 +31,8 @@ async function refreshData() {
     sheetData.forEach(player => {
       const friendStatus = friendsData.find(f => f.name === player["Player account"]);
       const isOnline = friendStatus ? friendStatus.online : false;
+
+      // Example: use mistsData later to map worlds if needed
 
       const row = document.createElement("tr");
       row.innerHTML = `
@@ -68,5 +52,3 @@ async function refreshData() {
 refreshData();
 setInterval(refreshData, 60000);
 </script>
-</body>
-</html>
